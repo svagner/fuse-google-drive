@@ -16,3 +16,5 @@ missing
 .*.swp
 fuse-google-drive
 ltmain.sh
+*.core
+google.xml.example

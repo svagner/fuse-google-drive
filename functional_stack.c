@@ -36,10 +36,15 @@ void fstack_destroy(struct stack_t *stack)
 
 void *fstack_pop(struct stack_t *stack)
 {
+	if(!stack)
+		return NULL;
 	struct fstack_item_t *item;
 	item = (struct fstack_item_t*) stack_pop(stack);
 	if(!item)
+	{
+		printf("Stack not found! Exiting...\n");
 		return NULL;
+	}
 
 	switch(item->order)
 	{

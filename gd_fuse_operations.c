@@ -22,6 +22,8 @@
 #include <fuse.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
+//#include <iconv.h>
 
 #include "gd_cache.h"
 #include "gd_interface.h"
@@ -44,6 +46,12 @@ struct gd_state {
 int gd_getattr (const char *path, struct stat *statbuf)
 {
 	struct fuse_context *fc = fuse_get_context();
+	char pathenc[MAXDIRNAME];
+	struct gd_fs_entry_t * entry;
+	const char *filename;
+	
+	if (strlen(encoding)>0 && decode(path, pathenc, sizeof(pathenc), encoding)!=-1)
+	    path = pathenc;
 
 	if( strcmp("/", path) == 0)
 	{
@@ -53,15 +61,17 @@ int gd_getattr (const char *path, struct stat *statbuf)
 	else
 	{
 		memset(statbuf, 0, sizeof(struct stat));
-		const char *filename = gdi_strip_path(path);
-		struct gd_fs_entry_t * entry = gd_fs_entry_find(filename);
+		filename = gdi_strip_path(path);
+		entry = gd_fs_entry_find(filename);
+
 		if(!entry)
 			return -ENOENT;
 
 		if(entry)
 			statbuf->st_size = entry->size;
 
-		statbuf->st_mode = S_IFREG | 0600;
+		fprintf(stderr, "%d\t\t%s\n", entry->mode, filename);
+		statbuf->st_mode = entry->mode;
 		statbuf->st_nlink=1;
 	}
 	statbuf->st_uid = fc->uid;
@@ -343,6 +353,9 @@ int gd_opendir (const char *path, struct fuse_file_info *fileinfo)
  */
 int gd_readdir (const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fileinfo)
 {
+	char outBuffer[MAXDIRNAME];
+	size_t iconverr;
+	fprintf(stderr, "readdir(): %s\n", path);
 
 	filler(buf, ".", NULL, 0);
 	filler(buf, "..", NULL, 0);
@@ -351,13 +364,24 @@ int gd_readdir (const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 	struct gd_fs_entry_t *iter = state->head;
 	while(iter != NULL)
 	{
-
-		if(filler(buf, iter->filename.str, NULL, 0))
+		if (strlen(encoding)>0 && encode(iter->filename.str, outBuffer, sizeof(outBuffer), encoding)!=-1)
 		{
+		    if(filler(buf, outBuffer, NULL, 0))
+		    {
 			fprintf(stderr, "readdir() filler()\n");
 			return -ENOMEM;
+		    }
+		    iter = iter->next;
 		}
-		iter = iter->next;
+		else
+		{
+		    if(filler(buf, iter->filename.str, NULL, 0))
+		    {
+			fprintf(stderr, "readdir() filler()\n");
+			return -ENOMEM;
+		    }
+		    iter = iter->next;
+		}
 	}
 
 	return 0;
@@ -510,17 +534,72 @@ struct fuse_operations gd_oper = {
 	//.poll        = gd_poll,
 };
 
+void usage(char * pname) 
+{
+	printf("Usage: %s [-C Encoding] mountpoint\n", pname);
+	exit(0);
+}
+
+static int gdi_opt_proc(void *data, const char *arg, int key, struct fuse_args *outargs)
+{
+	switch (key) {
+		case KEY_HELP:
+			fprintf(stderr,
+					"usage: %s mountpoint [options]\n"
+					"\n"
+					"general options:\n"
+					"    -o opt,[opt...]  mount options\n"
+					"    -h   --help      print help\n"
+					"    -V   --version   print version\n"
+					"\n"
+					"Myfs options:\n"
+					"    -o mynum=NUM\n"
+					"    -o mystring=STRING\n"
+					"    -o mybool\n"
+					"    -o nomybool\n"
+					"    -n NUM           same as '-omynum=NUM'\n"
+					"    --mybool=BOOL    same as 'mybool' or 'nomybool'\n"
+					, outargs->argv[0]);
+			fuse_opt_add_arg(outargs, "-ho");
+			fuse_main(outargs->argc, outargs->argv, &gd_oper, NULL);
+			exit(1);
+
+		case KEY_VERSION:
+			fprintf(stderr, "Myfs version %s\n", PACKAGE_VERSION);
+			fuse_opt_add_arg(outargs, "--version");
+			fuse_main(outargs->argc, outargs->argv, &gd_oper, NULL);
+			exit(0);
+	}
+	return 1;
+}
+
 int main(int argc, char* argv[])
 {
 	int fuse_stat;
 	struct gd_state gd_data;
+	int opt=0, optc=0;
+	char keyvalue[MAXENCODELEN];
+
+	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
+	struct gdi_config conf;
+
+	memset(&conf, 0, sizeof(conf));
+	fuse_opt_parse(&args, &conf, gdi_opts, gdi_opt_proc);
 
 	int ret = gdi_init(&gd_data.gdi_data);
 	if(ret != 0)
 		return ret;
 
 	// Start fuse
-	fuse_stat = fuse_main(argc, argv, &gd_oper, &gd_data);
+	if (strlen(conf.encoding)>0)
+	{
+	    fprintf(stderr, "Encoding: from UTF-8 to %s\n", conf.encoding);
+	    encoding = conf.encoding;
+	}
+	else
+	    encoding = NULL;
+
+	fuse_stat = fuse_main(args.argc, args.argv, &gd_oper, &gd_data);
 	/*  When we get here, fuse has finished.
 	 *  Do any necessary cleanups.
 	 */

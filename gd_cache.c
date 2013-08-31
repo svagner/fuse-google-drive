@@ -148,6 +148,26 @@ struct gd_fs_entry_t* gd_fs_entry_from_xml(xmlDocPtr xml, xmlNodePtr node)
 					str_init_create(&entry->src, value, 0);
 					xmlFree(value);
 				}
+				// file's type
+				else if (strcmp(name, "category") == 0)
+				{
+					value = xmlGetProp(c1, "label");
+					if (strcmp(value, "folder")==0)
+					{
+						entry->mode = S_IFDIR | 0700;
+						entry->shared = 0;
+					}
+					else if (strcmp(value, "shared")==0)
+					{
+						entry->mode = S_IFREG | 0600;
+						entry->shared = 1;
+					}
+					else
+					{
+						entry->mode = S_IFREG | 0600;
+						entry->shared = 0;
+					}
+				}
 				break;
 			case 'f':
 				if(strcmp(name, "feedlink") == 0)

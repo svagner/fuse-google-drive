@@ -22,7 +22,8 @@
 #include <libxml/tree.h>
 #include <pthread.h>
 #include "str.h"
-
+//File Types
+#include <sys/stat.h>
 
 // Do we need to represent folders differently from files?
 // For the time being, ignore folders
@@ -40,6 +41,8 @@ struct gd_fs_entry_t {
 
 	struct str_t cache;
 	int cached;
+	int mode;	// type of file
+	int shared;	// shared or not?
 
 	unsigned long size; // file size in bytes, 'gd:quotaBytesUsed' in XML
 	struct str_t md5; // 'docs:md5Checksum' in XML

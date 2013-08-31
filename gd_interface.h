@@ -21,6 +21,9 @@
 
 #define FUSE_USE_VERSION 26
 
+#define MAXDIRNAME 256
+#define MAXENCODELEN 12
+
 #include <curl/curl.h>
 #include <curl/multi.h>
 #include <fuse.h>
@@ -29,6 +32,29 @@
 #include "gd_cache.h"
 #include "stack.h"
 #include "str.h"
+
+//#define KEY_HELP	0
+//#define KEY_VERSION     1
+#define GDI_OPT(t, p, v) { t, offsetof(struct gdi_config, p), v }
+
+struct gdi_config {
+	char *encoding;
+};
+
+enum {
+	KEY_HELP,
+	KEY_VERSION,
+};
+
+static struct fuse_opt gdi_opts[] = {
+	GDI_OPT("--encoding=%s",       encoding, 0),
+
+	FUSE_OPT_KEY("-V",             KEY_VERSION),
+	FUSE_OPT_KEY("--version",      KEY_VERSION),
+	FUSE_OPT_KEY("-h",             KEY_HELP),
+	FUSE_OPT_KEY("--help",         KEY_HELP),
+	FUSE_OPT_END
+};
 
 struct gdi_state {
 	char *clientsecrets;
@@ -56,6 +82,8 @@ struct gdi_state {
 
 	struct str_t oauth_header;
 };
+
+char* encoding;
 
 char* urlencode (const char *url, size_t* length);
 

@@ -42,5 +42,7 @@ int str_char_concat(struct str_t* str, const char const* value, size_t size);
 struct str_t *str_urlencode_str (const struct str_t const* url);
 struct str_t *str_urlencode_char (const char* url, size_t length);
 
+int encode(char *input, char *buffer, size_t buffsize, const char *codeto);
+int decode(char *input, char *buffer, size_t buffsize, const char *codefrom);
 #endif
 
