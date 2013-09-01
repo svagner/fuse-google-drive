@@ -1,3 +1,7 @@
+RESEARCH:
+Need rebuild all logical via inode numbers, NOT NAMES!
+==========================================================
+
 fuse-google-drive is a fuse filesystem wrapper for Google Drive released under GPLv2
 
 Currently in alpha stages. Do not trust this for anything important.

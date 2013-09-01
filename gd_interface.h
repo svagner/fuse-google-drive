@@ -39,6 +39,7 @@
 
 struct gdi_config {
 	char *encoding;
+	int  fulltest;
 };
 
 enum {
@@ -47,7 +48,8 @@ enum {
 };
 
 static struct fuse_opt gdi_opts[] = {
-	GDI_OPT("--encoding=%s",       encoding, 0),
+	GDI_OPT("--encoding=%s",    encoding, 0),
+	GDI_OPT("--fulltest",	    fulltest, 1),
 
 	FUSE_OPT_KEY("-V",             KEY_VERSION),
 	FUSE_OPT_KEY("--version",      KEY_VERSION),

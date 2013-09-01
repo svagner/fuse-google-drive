@@ -108,6 +108,7 @@ char* filenameencode (const char *filename, size_t *length)
 struct gd_fs_entry_t* gd_fs_entry_from_xml(xmlDocPtr xml, xmlNodePtr node)
 {
 	struct gd_fs_entry_t* entry;
+	unsigned long inode = 0;
 
 	entry = (struct gd_fs_entry_t*) malloc(sizeof(struct gd_fs_entry_t));
 	if(entry == NULL) {} // TODO: ERROR
@@ -117,9 +118,12 @@ struct gd_fs_entry_t* gd_fs_entry_from_xml(xmlDocPtr xml, xmlNodePtr node)
 	xmlNodePtr c1, c2;
 	xmlChar *value = NULL;
 
+	inode = get_free_inode();
 	for(c1 = node->children; c1 != NULL; c1 = c1->next)
 	{
+
 		char const *name = c1->name;
+
 		switch(*name)
 		{
 			case 'a': // 'author'
@@ -154,16 +158,19 @@ struct gd_fs_entry_t* gd_fs_entry_from_xml(xmlDocPtr xml, xmlNodePtr node)
 					value = xmlGetProp(c1, "label");
 					if (strcmp(value, "folder")==0)
 					{
+						inodetable[inode].inode->mode = S_IFDIR | 0700;
 						entry->mode = S_IFDIR | 0700;
 						entry->shared = 0;
 					}
 					else if (strcmp(value, "shared")==0)
 					{
+						inodetable[inode].inode->mode = S_IFREG | 0600;
 						entry->mode = S_IFREG | 0600;
 						entry->shared = 1;
 					}
 					else
 					{
+						inodetable[inode].inode->mode = S_IFREG | 0600;
 						entry->mode = S_IFREG | 0600;
 						entry->shared = 0;
 					}
@@ -212,6 +219,13 @@ struct gd_fs_entry_t* gd_fs_entry_from_xml(xmlDocPtr xml, xmlNodePtr node)
 					value = xmlGetProp(c1, "rel");
 					if(strcmp(value, "http://schemas.google.com/docs/2007#parent") == 0)
 					{
+						xmlChar *value;
+						value = xmlGetProp(c1, "title");
+						str_init_create(&entry->parent, value, 0);
+						xmlFree(value);
+						value = xmlGetProp(c1, "href");
+						str_init_create(&entry->parent_href, value, 0);
+						xmlFree(value);
 						// This entry is inside one (or more?) collections
 						// These entries are the folders for this entry
 					}
@@ -283,7 +297,9 @@ struct gd_fs_entry_t* gd_fs_entry_from_xml(xmlDocPtr xml, xmlNodePtr node)
 				break;
 		}
 	}
-
+	entry->inode = inode;
+	inodetable[inode].num = inode;
+	inodetable[inode].inode->node = entry;
 	return entry;
 }
 
@@ -307,9 +323,9 @@ struct str_t* xml_get_md5sum(const struct str_t* xml)
 
 	if(xmldoc == NULL || xmldoc->children == NULL || xmldoc->children->children == NULL)
 		return NULL;
+	char const *name = node->name;
 	for(node = xmldoc->children->children; node != NULL; node = node->next)
 	{
-		char const *name = node->name;
 		switch(*name)
 		{
 			case 'm':

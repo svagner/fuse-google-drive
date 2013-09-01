@@ -70,7 +70,6 @@ int gd_getattr (const char *path, struct stat *statbuf)
 		if(entry)
 			statbuf->st_size = entry->size;
 
-		fprintf(stderr, "%d\t\t%s\n", entry->mode, filename);
 		statbuf->st_mode = entry->mode;
 		statbuf->st_nlink=1;
 	}
@@ -101,6 +100,13 @@ int gd_mknod (const char *path, mode_t mode, dev_t dev)
  */
 int gd_mkdir (const char *path, mode_t mode)
 {
+	struct gd_fs_tableinode_t *binode;
+	for(binode = busy_inodes ; binode->next!=NULL; binode=binode->next)
+	{
+		if (binode->num < 2)
+			continue;
+		fprintf(stderr, "[TEST_INODE_CREATE] Inode[%ld] Filename[%s] parent[%ld]\n", binode->num, binode->inode->node->filename.str, binode->pnum);
+	}
 	return 0;
 }
 
@@ -355,6 +361,10 @@ int gd_readdir (const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 {
 	char outBuffer[MAXDIRNAME];
 	size_t iconverr;
+	unsigned long inode;
+	const char *filename;
+	struct gd_fs_entry_t * entry;
+
 	fprintf(stderr, "readdir(): %s\n", path);
 
 	filler(buf, ".", NULL, 0);
@@ -362,8 +372,16 @@ int gd_readdir (const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 	struct gdi_state *state = &((struct gd_state*)fuse_get_context()->private_data)->gdi_data;
 
 	struct gd_fs_entry_t *iter = state->head;
-	while(iter != NULL)
+	if (!strcmp(path, "/"))
 	{
+	    while(iter != NULL)
+	    {
+		inode = iter->inode;
+		if (inodetable[inode].pnum != 1)
+		{
+		    iter = iter->next;
+		continue;
+		}
 		if (strlen(encoding)>0 && encode(iter->filename.str, outBuffer, sizeof(outBuffer), encoding)!=-1)
 		{
 		    if(filler(buf, outBuffer, NULL, 0))
@@ -382,6 +400,39 @@ int gd_readdir (const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 		    }
 		    iter = iter->next;
 		}
+	    }
+	}
+	else
+	{
+		filename = gdi_strip_path(path);
+		entry = gd_fs_entry_find(filename);
+	    while(iter != NULL)
+	    {
+		inode = iter->inode;
+		if (inodetable[inode].pnum != entry->inode)
+		{
+		    iter = iter->next;
+		continue;
+		}
+		if (strlen(encoding)>0 && encode(iter->filename.str, outBuffer, sizeof(outBuffer), encoding)!=-1)
+		{
+		    if(filler(buf, outBuffer, NULL, 0))
+		    {
+			fprintf(stderr, "readdir() filler()\n");
+			return -ENOMEM;
+		    }
+		    iter = iter->next;
+		}
+		else
+		{
+		    if(filler(buf, iter->filename.str, NULL, 0))
+		    {
+			fprintf(stderr, "readdir() filler()\n");
+			return -ENOMEM;
+		    }
+		    iter = iter->next;
+		}
+	    }
 	}
 
 	return 0;
@@ -496,7 +547,7 @@ struct fuse_operations gd_oper = {
 	// getdir() deprecated, use readdir()
 	.getdir        = NULL,
 	//.mknod       = gd_mknod,
-	//.mkdir       = gd_mkdir,
+	.mkdir       = gd_mkdir,
 	//.unlink      = gd_unlink,
 	//.rmdir       = gd_rmdir,
 	//.symlink     = gd_symlink,
@@ -575,10 +626,19 @@ static int gdi_opt_proc(void *data, const char *arg, int key, struct fuse_args *
 
 int main(int argc, char* argv[])
 {
-	int fuse_stat;
+	int fuse_stat,
+	    ret;
 	struct gd_state gd_data;
 	int opt=0, optc=0;
 	char keyvalue[MAXENCODELEN];
+	unsigned long finodes, binodes;
+
+	ret = init_inode_table();
+	if (ret)
+	{
+	    fprintf(stderr, "Init table of inodes filed\n");
+	    return ret;
+	}
 
 	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 	struct gdi_config conf;
@@ -586,7 +646,39 @@ int main(int argc, char* argv[])
 	memset(&conf, 0, sizeof(conf));
 	fuse_opt_parse(&args, &conf, gdi_opts, gdi_opt_proc);
 
-	int ret = gdi_init(&gd_data.gdi_data);
+	unsigned long inode = get_free_inode();
+	if (inode)
+	{
+	    fprintf(stderr, "Get inode %ld is OK. Busy inodes: %d, Free Inodes: %d\n", inode, istat.busy, istat.free);
+	}
+	else 
+	{
+	    fprintf(stderr, "Get test inode FAILED. Busy inodes: %d, Free Inodes: %d\n", istat.busy, istat.free);
+	    return 1;
+	}
+	if ((ret = free_inode(inode))!=0)
+	{
+	    fprintf(stderr, "Free inode FAILED. Busy inodes: %d, Free Inodes: %d\n", istat.busy, istat.free);
+	    return 1;
+	}
+	else
+	    fprintf(stderr, "Free inode %ld is OK. Busy inodes: %d, Free Inodes: %d\n", inode, istat.busy, istat.free);
+
+	fprintf(stderr, "Test inode[%ld]: state[%d] address[%p]\n", 0, inodetable[0].state, &inodetable[0]);
+	if (conf.fulltest)
+	{
+	    finodes = get_all_free_inodes();
+	    binodes = get_all_busy_inodes();
+	    fprintf(stderr, "Test inode[%ld]: state[%d] address[%p]\n", 0, inodetable[0].state, &inodetable[0]);
+	    fprintf(stderr, "Free inodes [%ld] Busy inodes [%ld]\n", finodes, binodes);
+	    if ((finodes+binodes)!=istat.allocated || finodes != istat.free || binodes != istat.busy) /* 0 inode = 1 inode */
+	    {
+		fprintf(stderr, "Inode's table[%p] is corrupted: Allocated[%ld %ld] Free[%ld %ld] Busy[%ld %ld]\n", inodetable, finodes+binodes, istat.allocated, finodes, istat.free, binodes, istat.busy);
+		return 1;
+	    }
+	};
+
+	ret = gdi_init(&gd_data.gdi_data);
 	if(ret != 0)
 		return ret;
 

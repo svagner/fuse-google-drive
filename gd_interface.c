@@ -622,6 +622,11 @@ struct str_t* xml_parse_file_list(struct str_t* xml, struct gdi_state *state)
 	}
 	xmlFreeDoc(xmldoc);
 	state->num_files += count;
+	if(set_parent_inode()!=0)
+	{
+		fprintf(stderr, "Error set up parrent directory tree\n");
+		return NULL;
+	}
 	return next;
 }
 

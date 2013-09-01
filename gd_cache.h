@@ -38,10 +38,13 @@ struct gd_fs_entry_t {
 	struct str_t resourceID;
 	struct str_t src; // The url for downloading the file
 	struct str_t feed; // The url for getting the XML feed for this entry
+	struct str_t parent; // 'title' of the parent
+	struct str_t parent_href; // 'title' of the parent
 
 	struct str_t cache;
 	int cached;
 	int mode;	// type of file
+	int inode;
 	int shared;	// shared or not?
 
 	unsigned long size; // file size in bytes, 'gd:quotaBytesUsed' in XML
@@ -53,6 +56,47 @@ struct gd_fs_entry_t {
 	// Linked list
 	struct gd_fs_entry_t *next;
 };
+/* START DESCRIPTION FOR INODES	*/
+#define	MAXINODES   50000
+#define	FREEINODE   0
+#define	BUSYINODE   1
+/* Inode's description */
+struct gd_fs_inode_t {
+	int mode;		    /* Mode's bits	*/
+	struct gd_fs_entry_t *node; /* pointer to f desc*/
+	struct str_t src;	    /* Data segment	*/
+
+};
+
+/* Tables of inode - description */
+struct gd_fs_tableinode_t {
+	unsigned long num;	    /* Inode's num	*/
+	unsigned long pnum;		    /* parent's inode	*/
+	struct gd_fs_inode_t* inode;/* Inode pointer	*/
+	int state;		    /* Free or busy?	*/
+	struct gd_fs_tableinode_t *next;
+	struct gd_fs_tableinode_t *prev;
+};
+
+struct inode_stats {
+	unsigned long free;
+	unsigned long busy;
+	unsigned long allocated;
+};
+
+struct inode_stats istat;
+struct gd_fs_tableinode_t *free_inodes;
+struct gd_fs_tableinode_t *busy_inodes;
+struct gd_fs_tableinode_t *inodetable;
+
+unsigned long get_free_inode(void);
+unsigned long get_all_free_inodes(void);
+unsigned long get_all_busy_inodes(void);
+unsigned long get_inode_by_href(struct str_t* href, unsigned long inum);
+int init_inode_table(void);
+int set_parent_inode(void);
+
+/* END DESCRIPTION FOR INODES	*/
 
 // Since hsearch et al are likely not threadsafe we need to use a read write
 // lock to prevent corruption. The write lock should only be taken when we
